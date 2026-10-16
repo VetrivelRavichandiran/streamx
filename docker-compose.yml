@@ -1,0 +1,243 @@
+# STREAMX local cluster (single machine).
+#
+#   make docker-up     # build + start everything
+#   make docker-down   # stop + remove
+#
+# Ports (CONTRACTS.md §17):
+#   9092-9094 brokers (data) · 9102-9104 broker metrics · 8080 api ·
+#   3000 web · 5432 postgres · 6379 redis · 9090 prometheus · 3001 grafana
+#
+# All broker/api configuration uses STREAMX_* env vars (CONTRACTS.md §12).
+
+name: streamx
+
+services:
+  # ------------------------------------------------------------------ infra
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: streamx
+      POSTGRES_PASSWORD: streamx
+      POSTGRES_DB: streamx
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamx -d streamx"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------- brokers
+  # Each broker runs the same image; identity comes from env. The image
+  # carries a HEALTHCHECK that probes STREAMX_METRICS_ADDR/healthz.
+  broker-1:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.broker
+    environment:
+      STREAMX_BROKER_ID: broker-1
+      STREAMX_BROKER_ADDR: ":9092"
+      STREAMX_METRICS_ADDR: ":9102"
+      STREAMX_CLUSTER: "broker-1=broker-1:9092,broker-2=broker-2:9093,broker-3=broker-3:9094"
+      STREAMX_DATA_DIR: /data
+      STREAMX_FSYNC_INTERVAL_MS: "0"
+      STREAMX_SEGMENT_MAX_BYTES: "67108864"
+      STREAMX_RETENTION_CHECK_INTERVAL_MS: "30000"
+      STREAMX_HEARTBEAT_INTERVAL_MS: "500"
+      STREAMX_BROKER_TIMEOUT_MS: "1500"
+      STREAMX_PRODUCE_RATE_LIMIT: "50000"
+      STREAMX_TOPIC_RATE_LIMIT: "200000"
+      STREAMX_MAX_BATCH_BYTES: "16777216"
+      STREAMX_PENDING_APPEND_BUDGET: "67108864"
+    ports:
+      - "9092:9092"
+      - "9102:9102"
+    volumes:
+      - broker1-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "env:STREAMX_METRICS_ADDR"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  broker-2:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.broker
+    environment:
+      STREAMX_BROKER_ID: broker-2
+      STREAMX_BROKER_ADDR: ":9093"
+      STREAMX_METRICS_ADDR: ":9103"
+      STREAMX_CLUSTER: "broker-1=broker-1:9092,broker-2=broker-2:9093,broker-3=broker-3:9094"
+      STREAMX_DATA_DIR: /data
+      STREAMX_FSYNC_INTERVAL_MS: "0"
+      STREAMX_SEGMENT_MAX_BYTES: "67108864"
+      STREAMX_RETENTION_CHECK_INTERVAL_MS: "30000"
+      STREAMX_HEARTBEAT_INTERVAL_MS: "500"
+      STREAMX_BROKER_TIMEOUT_MS: "1500"
+      STREAMX_PRODUCE_RATE_LIMIT: "50000"
+      STREAMX_TOPIC_RATE_LIMIT: "200000"
+      STREAMX_MAX_BATCH_BYTES: "16777216"
+      STREAMX_PENDING_APPEND_BUDGET: "67108864"
+    ports:
+      - "9093:9093"
+      - "9103:9103"
+    volumes:
+      - broker2-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "env:STREAMX_METRICS_ADDR"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  broker-3:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.broker
+    environment:
+      STREAMX_BROKER_ID: broker-3
+      STREAMX_BROKER_ADDR: ":9094"
+      STREAMX_METRICS_ADDR: ":9104"
+      STREAMX_CLUSTER: "broker-1=broker-1:9092,broker-2=broker-2:9093,broker-3=broker-3:9094"
+      STREAMX_DATA_DIR: /data
+      STREAMX_FSYNC_INTERVAL_MS: "0"
+      STREAMX_SEGMENT_MAX_BYTES: "67108864"
+      STREAMX_RETENTION_CHECK_INTERVAL_MS: "30000"
+      STREAMX_HEARTBEAT_INTERVAL_MS: "500"
+      STREAMX_BROKER_TIMEOUT_MS: "1500"
+      STREAMX_PRODUCE_RATE_LIMIT: "50000"
+      STREAMX_TOPIC_RATE_LIMIT: "200000"
+      STREAMX_MAX_BATCH_BYTES: "16777216"
+      STREAMX_PENDING_APPEND_BUDGET: "67108864"
+    ports:
+      - "9094:9094"
+      - "9104:9104"
+    volumes:
+      - broker3-data:/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "env:STREAMX_METRICS_ADDR"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------- api
+  api:
+    build:
+      context: .
+      dockerfile: deployments/Dockerfile.api
+    environment:
+      STREAMX_API_ADDR: ":8080"
+      STREAMX_DB_URL: "postgres://streamx:streamx@postgres:5432/streamx"
+      STREAMX_ADMIN_USER: admin
+      STREAMX_ADMIN_PASSWORD: admin123
+      STREAMX_OPERATOR_USER: operator
+      STREAMX_OPERATOR_PASSWORD: operator123
+      STREAMX_RATE_LIMIT_RPS: "500"
+      STREAMX_REDIS_URL: "redis://redis:6379"
+      STREAMX_BROKER_CLUSTER: "broker-1=broker-1:9092,broker-2=broker-2:9093,broker-3=broker-3:9094"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "env:STREAMX_API_ADDR"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------- web
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      # Rewrite destination is baked in at build time (Next.js evaluates
+      # rewrites() during `next build`).
+      args:
+        API_TARGET: "http://api:8080"
+    environment:
+      # Browser-side base URL (same origin; the server rewrite proxies /api).
+      NEXT_PUBLIC_API_URL: ""
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------------------------- observability
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=24h"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  broker1-data:
+  broker2-data:
+  broker3-data:
+  prometheus-data:
+  grafana-data:

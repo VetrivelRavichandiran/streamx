@@ -1,0 +1,16 @@
+# STREAMX bench — load generator + benchmark runner (cmd/bench)
+# Typically run as a one-shot job; not an HTTP server, so no HEALTHCHECK.
+FROM golang:1.25 AS build
+WORKDIR /src
+# go.mod may declare a newer toolchain; let the Go toolchain manager fetch it.
+ENV GOTOOLCHAIN=auto
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/streamx-bench ./cmd/bench
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/streamx-bench /usr/local/bin/streamx-bench
+USER nonroot
+# Config via env: BENCH_API, BENCH_TOKEN
+ENTRYPOINT ["/usr/local/bin/streamx-bench"]

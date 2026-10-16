@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  # ------------------------------------------------------------------ Go ----
+  go:
+    name: Go (vet, fmt, lint, test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt check
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt reported unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: Unit + race tests
+        run: go test -race ./...
+
+      - name: Integration tests
+        run: go test -race -tags integration ./tests/...
+
+  # --------------------------------------------------------------- Docker ----
+  docker-smoke:
+    name: Docker build smoke (api + broker)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go (needed by the multi-stage build)
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build api image
+        run: docker build -f deployments/Dockerfile.api -t streamx-api:ci .
+
+      - name: Build broker image
+        run: docker build -f deployments/Dockerfile.broker -t streamx-broker:ci .
+
+      - name: Smoke - api image starts and answers /health
+        run: |
+          docker run -d --name streamx-api-smoke -p 8080:8080 \
+            -e STREAMX_DB_URL=sqlite://./data/streamx.db \
+            streamx-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "api /health OK"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs streamx-api-smoke || true
+          exit 1
+
+  # --------------------------------------------------------------- Web ----
+  web:
+    name: Frontend build (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,23 @@
+# STREAMX API — control-plane binary (cmd/api)
+FROM golang:1.25 AS build
+WORKDIR /src
+# go.mod may declare a newer toolchain; let the Go toolchain manager fetch it.
+ENV GOTOOLCHAIN=auto
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/streamx-api ./cmd/api
+# Tiny HTTP probe for the container HEALTHCHECK (distroless has no curl).
+COPY deployments/healthcheck/hc.go /tmp/hc.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/healthcheck /tmp/hc.go
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/streamx-api /usr/local/bin/streamx-api
+COPY --from=build /out/healthcheck /usr/local/bin/healthcheck
+EXPOSE 8080
+USER nonroot
+# STREAMX_API_ADDR is the listen addr (e.g. :8080); the probe resolves it to
+# http://localhost:8080/healthz.
+HEALTHCHECK --interval=10s --timeout=4s --start-period=15s --retries=3 \
+  CMD ["/usr/local/bin/healthcheck", "env:STREAMX_API_ADDR"]
+ENTRYPOINT ["/usr/local/bin/streamx-api"]

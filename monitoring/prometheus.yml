@@ -1,0 +1,50 @@
+# STREAMX Prometheus configuration
+#
+# Scrapes:
+#   - broker metrics endpoints  :9102-:9104  (streamx_up, offsets, lag, runtime)
+#   - API control plane         :8080/metrics (auth, rate limits, DLQ, benchmarks)
+#
+# Broker instances are distinguished by the `broker` label carried on every
+# broker metric (e.g. streamx_up{broker="broker-1"}). The relabel below also
+# copies the scrape target port into a `metrics_port` label so dashboards can
+# tell instances apart even if a broker's label is missing.
+
+global:
+  scrape_interval: 2s
+  evaluation_interval: 5s
+  external_labels:
+    cluster: streamx-local
+
+scrape_configs:
+  # --- brokers (data plane) -------------------------------------------------
+  - job_name: streamx-brokers
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "localhost:9102"
+          - "localhost:9103"
+          - "localhost:9104"
+        labels:
+          service: broker
+    relabel_configs:
+      # instance label already carries broker-1=9102 etc. via the target;
+      # add an explicit port label for dashboards.
+      - source_labels: [__address__]
+        regex: (.+):(\d+)
+        target_label: metrics_port
+        replacement: "$2"
+
+  # --- API (control plane) --------------------------------------------------
+  - job_name: streamx-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "localhost:8080"
+        labels:
+          service: api
+
+  # --- prometheus self (handy for the overview dashboard) -------------------
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - "localhost:9090"

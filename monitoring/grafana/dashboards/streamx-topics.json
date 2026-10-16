@@ -1,0 +1,214 @@
+{
+  "uid": "streamx-topics",
+  "title": "STREAMX / Topics & Replication",
+  "tags": ["streamx"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "2s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "topic",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "" },
+        "query": "label_values(streamx_partition_offset, topic)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Partition LEO / HW / log-start (topic: $topic)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "streamx_partition_offset{topic=\"$topic\"}",
+          "legendFormat": "p{{partition}} LEO",
+          "refId": "A"
+        },
+        {
+          "expr": "streamx_partition_high_watermark{topic=\"$topic\"}",
+          "legendFormat": "p{{partition}} HW",
+          "refId": "B"
+        },
+        {
+          "expr": "streamx_partition_log_start_offset{topic=\"$topic\"}",
+          "legendFormat": "p{{partition}} start",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5, "spanNulls": true, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Consumer lag by group & partition (topic: $topic)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "streamx_consumer_lag{topic=\"$topic\"}",
+          "legendFormat": "{{group}} p{{partition}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "max": 10000,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 5000 }
+            ]
+          },
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "spanNulls": true, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Replication lag (leader → follower)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "streamx_replication_lag{topic=\"$topic\"}",
+          "legendFormat": "p{{partition}} {{leader}}→{{follower}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 5, "spanNulls": true, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Produce / fetch request rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (acks) (rate(streamx_produce_requests_total{topic=\"$topic\"}[30s]))",
+          "legendFormat": "produce {{acks}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (partition) (rate(streamx_fetch_requests_total{topic=\"$topic\"}[30s]))",
+          "legendFormat": "fetch p{{partition}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "spanNulls": true, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Events produced / consumed (topic: $topic)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (partition) (rate(streamx_events_produced_total{topic=\"$topic\"}[30s]))",
+          "legendFormat": "produced p{{partition}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (partition) (rate(streamx_events_consumed_total{topic=\"$topic\"}[30s]))",
+          "legendFormat": "consumed p{{partition}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "spanNulls": true, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Bytes produced / consumed (topic: $topic)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(streamx_bytes_produced_total{topic=\"$topic\"}[30s])",
+          "legendFormat": "produced",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(streamx_bytes_consumed_total{topic=\"$topic\"}[30s])",
+          "legendFormat": "consumed",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 15, "spanNulls": true, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Partition snapshot (topic: $topic)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "streamx_partition_offset{topic=\"$topic\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "none" },
+        "overrides": []
+      },
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": false }, "indexByName": { "topic": 0, "partition": 1, "Value": 2 } } }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "partition", "desc": false }]
+      }
+    }
+  ]
+}

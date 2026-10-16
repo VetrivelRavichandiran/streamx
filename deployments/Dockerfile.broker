@@ -1,0 +1,29 @@
+# STREAMX broker — data-plane binary (cmd/broker)
+# Multi-stage build: compile with golang:1.25, ship in a minimal runtime.
+FROM golang:1.25 AS build
+WORKDIR /src
+# go.mod may declare a newer toolchain; let the Go toolchain manager fetch it.
+ENV GOTOOLCHAIN=auto
+# Cache module downloads separately from source changes.
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/streamx-broker ./cmd/broker
+# Tiny HTTP probe for the container HEALTHCHECK (distroless has no curl).
+COPY deployments/healthcheck/hc.go /tmp/hc.go
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/healthcheck /tmp/hc.go
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/streamx-broker /usr/local/bin/streamx-broker
+COPY --from=build /out/healthcheck /usr/local/bin/healthcheck
+# Data dir (override with -v in compose / k8s).
+ENV STREAMX_DATA_DIR=/data
+VOLUME ["/data"]
+# 9092 data plane, 9102 metrics (both overridable via env).
+EXPOSE 9092 9102
+USER nonroot
+# STREAMX_METRICS_ADDR is the listen addr (e.g. :9102); the probe resolves
+# it to http://localhost:9102/healthz.
+HEALTHCHECK --interval=10s --timeout=4s --start-period=15s --retries=3 \
+  CMD ["/usr/local/bin/healthcheck", "env:STREAMX_METRICS_ADDR"]
+ENTRYPOINT ["/usr/local/bin/streamx-broker"]

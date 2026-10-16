@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0e14;
+  --panel: #0f141c;
+  --border: #1e2733;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: #cbd5e1;
+  font-feature-settings: "cv02", "cv03", "cv04";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle grid texture on the app background */
+.app-bg {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 132, 255, 0.08), transparent),
+    linear-gradient(var(--bg), var(--bg));
+}
+
+/* Shared input styling (used by components/ui.tsx) */
+.input {
+  @apply w-full rounded-md border border-slate-700 bg-slate-950/70 px-2.5 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:border-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-600 disabled:opacity-50;
+}
+
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2b3646 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2b3646;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Focus visibility for keyboard users */
+:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 1px;
+}
+
+/* Recharts dark-theme tweaks */
+.recharts-cartesian-axis-tick text {
+  fill: #64748b;
+  font-size: 10px;
+}
+.recharts-cartesian-grid line {
+  stroke: #1e2733;
+}
+.recharts-default-tooltip {
+  background: #0f141c !important;
+  border: 1px solid #1e2733 !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+}
+.recharts-tooltip-item {
+  font-size: 11px !important;
+}
+.recharts-legend-item-text {
+  font-size: 11px !important;
+  color: #94a3b8 !important;
+}
+
+/* Monospace numerals for tabular data */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
